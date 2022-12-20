@@ -2,6 +2,15 @@ import org.jetbrains.changelog.markdownToHTML
 
 fun properties(key: String) = project.findProperty(key).toString()
 
+buildscript {
+    repositories {
+//        maven ('https://maven.aliyun.com/nexus/content/groups/public/')
+        mavenLocal()
+        mavenCentral()
+    }
+
+}
+
 plugins {
     // gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
     // Java support
@@ -23,7 +32,7 @@ dependencies {
 }
 
 group = "ink.organics"
-version = "1.1.6"
+version = "1.1.7"
 
 
 repositories {
@@ -31,7 +40,7 @@ repositories {
 }
 
 intellij {
-    version.set("2020.3")
+    version.set("2021.3")
     updateSinceUntilBuild.set(false)
     // https://github.com/JetBrains/gradle-intellij-plugin/issues/38
     plugins.set(listOf("java", "Kotlin"))
@@ -51,6 +60,8 @@ tasks {
     }
 
     test {
+        // 这个路径下要存在mockJDK，其目录结构为 java/mockJDK-$JAVA_VERSION$
+        // https://plugins.jetbrains.com/docs/intellij/testing-faq.html#how-to-test-a-jvm-language
         systemProperties(Pair("idea.home.path", project.projectDir))
     }
 

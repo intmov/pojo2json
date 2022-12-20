@@ -11,22 +11,38 @@
     </extensions>
 
     <actions>
-        <group id="ink.organics.pojo2json.POJO2JsonGroup">
-            <separator/>
+        <group id="org.intellij.sdk.action.GroupedActions1"
+               text="POJO to JSON (Schema).."
+               description="POJO to JSON (Schema).."
+               popup="true"
+               icon="/icons/default.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="first" />
+
             <action class="ink.organics.pojo2json.POJO2JsonDefaultAction"
                     id="ink.organics.pojo2json.POJO2JsonDefaultAction"
-                    icon="/icons/default.svg"
                     text="POJO To JSON"
                     description="Convert POJO to JSON and copy to the shear plate">
             </action>
             <action class="ink.organics.pojo2json.POJO2JsonRandomAction"
                     id="ink.organics.pojo2json.POJO2JsonRandomAction"
-                    icon="/icons/random.svg"
                     text="POJO To JSON Random Values"
                     description="Convert POJO to JSON and copy to the shear plate and randomly generate some test data">
             </action>
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-            <separator/>
+            <action class="ink.organics.pojo2json.POJO2JsonSchemaAction"
+                    id="ink.organics.pojo2json.POJO2JsonSchemaAction"
+                    text="POJO To JSON Schema"
+                    description="POJO To JSON Schema to clipboard">
+            </action>
+            <action class="ink.organics.pojo2json.POJO2JsonSchemaWithCodeAction"
+                    id="ink.organics.pojo2json.POJO2JsonSchemaWithCodeAction"
+                    text="POJO To JSON Schema with Code"
+                    description="POJO To JSON Schema to clipboard">
+            </action>
+            <action class="ink.organics.pojo2json.POJO2JsonSchemaWithPageInfoAction"
+                    id="ink.organics.pojo2json.POJO2JsonSchemaWithPageInfoAction"
+                    text="POJO To JSON Schema with Page Info"
+                    description="POJO To JSON Schema to clipboard">
+            </action>
         </group>
     </actions>
 </idea-plugin>

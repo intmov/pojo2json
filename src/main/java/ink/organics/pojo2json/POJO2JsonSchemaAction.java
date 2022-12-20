@@ -1,5 +1,6 @@
 package ink.organics.pojo2json;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.intellij.notification.*;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -11,7 +12,9 @@ import com.intellij.psi.*;
 import com.intellij.psi.javadoc.PsiDocComment;
 import com.intellij.psi.javadoc.PsiDocTag;
 import com.intellij.psi.util.PsiUtil;
-import ink.organics.pojo2json.fake.*;
+import ink.organics.pojo2json.domain.JsonSchemaArray;
+import ink.organics.pojo2json.domain.JsonSchemaItem;
+import ink.organics.pojo2json.domain.JsonSchemaObject;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.uast.UClass;
@@ -25,13 +28,14 @@ import java.util.List;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public abstract class POJO2JsonAction extends AnAction {
+public class POJO2JsonSchemaAction extends AnAction {
 
 
     private final NotificationGroup notificationGroup =
             NotificationGroupManager.getInstance().getNotificationGroup("pojo2json.NotificationGroup");
 
-    private final Map<String, JsonFakeValuesService> normalTypes = new HashMap<>();
+    //    private final Map<String, JsonFakeValuesService> normalTypes = new HashMap<>();
+    private final ArrayList<String> normalTypes = new ArrayList<>();
 
     private final List<String> iterableTypes = List.of(
             "Iterable",
@@ -41,26 +45,31 @@ public abstract class POJO2JsonAction extends AnAction {
 
     private final GsonBuilder gsonBuilder = new GsonBuilder().setPrettyPrinting();
 
-    public POJO2JsonAction() {
+    public POJO2JsonSchemaAction() {
 
-        FakeDecimal fakeDecimal = new FakeDecimal();
-        FakeLocalDateTime fakeLocalDateTime = new FakeLocalDateTime();
+        normalTypes.add("java.lang.Boolean");
+        normalTypes.add("java.lang.Byte");
+        normalTypes.add("java.lang.Short");
+        normalTypes.add("java.lang.Integer");
+        normalTypes.add("java.lang.Long");
+        normalTypes.add("java.lang.String");
+        normalTypes.add("java.lang.Float");
+        normalTypes.add("java.lang.Double");
+        normalTypes.add("java.math.BigDecimal");
+        normalTypes.add("java.lang.Character");
+        normalTypes.add("java.lang.CharSequence");
+        normalTypes.add("java.util.Date");
+        normalTypes.add("java.util.UUID");
+        normalTypes.add("java.time.LocalDateTime");
+        normalTypes.add("java.time.LocalDate");
+        normalTypes.add("java.time.LocalTime");
+        normalTypes.add("java.time.ZonedDateTime");
+        normalTypes.add("java.time.Instant");
+        normalTypes.add("java.time.YearMonth");
+    }
 
-        normalTypes.put("Boolean", new FakeBoolean());
-        normalTypes.put("Float", fakeDecimal);
-        normalTypes.put("Double", fakeDecimal);
-        normalTypes.put("BigDecimal", fakeDecimal);
-        normalTypes.put("Number", new FakeInteger());
-        normalTypes.put("Character", new FakeChar());
-        normalTypes.put("CharSequence", new FakeString());
-        normalTypes.put("Date", fakeLocalDateTime);
-        normalTypes.put("Temporal", new FakeTemporal());
-        normalTypes.put("LocalDateTime", fakeLocalDateTime);
-        normalTypes.put("LocalDate", new FakeLocalDate());
-        normalTypes.put("LocalTime", new FakeLocalTime());
-        normalTypes.put("ZonedDateTime", new FakeZonedDateTime());
-        normalTypes.put("YearMonth", new FakeYearMonth());
-        normalTypes.put("UUID", new FakeUUID());
+    protected String postProcess(String text){
+        return text;
     }
 
     @Override
@@ -92,8 +101,9 @@ public abstract class POJO2JsonAction extends AnAction {
             // ADAPTS to all JVM platform languages
             UClass uClass = UastUtils.findContaining(elementAt, UClass.class);
 
-            Map<String, Object> kv = parseClass(uClass.getJavaPsi(), 0, List.of());
-            String json = gsonBuilder.create().toJson(kv);
+            JsonSchemaObject obj = parseClass(uClass.getJavaPsi(), 0, List.of());
+            String json = gsonBuilder.create().toJson(obj);
+            json = postProcess(json);
             StringSelection selection = new StringSelection(json);
             Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
             clipboard.setContents(selection, selection);
@@ -112,18 +122,17 @@ public abstract class POJO2JsonAction extends AnAction {
     }
 
 
-    protected abstract Object getFakeValue(JsonFakeValuesService jsonFakeValuesService);
-
-
-    private Map<String, Object> parseClass(PsiClass psiClass, int level, List<String> ignoreProperties) {
+    private JsonSchemaObject parseClass(PsiClass psiClass, int level, List<String> ignoreProperties) {
         PsiAnnotation annotation = psiClass.getAnnotation(com.fasterxml.jackson.annotation.JsonIgnoreType.class.getName());
         if (annotation != null) {
             return null;
         }
-        return Arrays.stream(psiClass.getAllFields())
+        JsonSchemaObject obj = new JsonSchemaObject();
+        obj.properties = Arrays.stream(psiClass.getAllFields())
                 .map(field -> parseField(field, level, ignoreProperties))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (ov, nv) -> ov, LinkedHashMap::new));
+        return obj;
     }
 
     private Map.Entry<String, Object> parseField(PsiField field, int level, List<String> ignoreProperties) {
@@ -188,39 +197,36 @@ public abstract class POJO2JsonAction extends AnAction {
     }
 
     private Object parseFieldValue(PsiField field, int level, List<String> ignoreProperties) {
-        return parseFieldValueType(field.getType(), level, ignoreProperties);
+        return parseFieldValueType(field.getType(), field, level, ignoreProperties);
     }
 
-    private Object parseFieldValueType(PsiType type, int level, List<String> ignoreProperties) {
+    private Object parseFieldValueType(PsiType type, PsiField baseField, int level, List<String> ignoreProperties) {
 
         level = ++level;
 
-        if (type instanceof PsiPrimitiveType) {       //primitive Type
 
-            return getPrimitiveTypeValue(type);
+
+        if (type instanceof PsiPrimitiveType || normalTypes.contains(type.getCanonicalText())) {       //primitive Type
+//            System.out.println("thisType:"+type.getCanonicalText());
+            return getPrimitiveTypeValue(type, baseField);
 
         } else if (type instanceof PsiArrayType) {   //array type
 
             PsiType deepType = type.getDeepComponentType();
-            Object obj = parseFieldValueType(deepType, level, ignoreProperties);
-            return obj != null ? List.of(obj) : List.of();
+            Object obj = parseFieldValueType(deepType, baseField, level, ignoreProperties);
+            return new JsonSchemaArray(findDescription(baseField), obj);
 
         } else {    //reference Type
 
             PsiClass psiClass = PsiUtil.resolveClassInClassTypeOnly(type);
 
             if (psiClass == null) {
-                return new LinkedHashMap<>();
+                return null;
             }
 
             if (psiClass.isEnum()) { // enum
 
-                for (PsiField field : psiClass.getFields()) {
-                    if (field instanceof PsiEnumConstant) {
-                        return field.getName();
-                    }
-                }
-                return "";
+                return new JsonSchemaItem("string", findDescription(baseField), null);
 
             } else {
 
@@ -239,46 +245,90 @@ public abstract class POJO2JsonAction extends AnAction {
                 if (iterable) {// Iterable
 
                     PsiType deepType = PsiUtil.extractIterableTypeParameter(type, false);
-                    Object obj = parseFieldValueType(deepType, level, ignoreProperties);
-                    return obj != null ? List.of(obj) : List.of();
+                    Object obj = parseFieldValueType(deepType, baseField, level, ignoreProperties);
+                    return new JsonSchemaArray(findDescription(baseField), obj);
 
                 } else { // Object
 
-                    List<String> retain = new ArrayList<>(fieldTypeNames);
-                    retain.retainAll(normalTypes.keySet());
-                    if (!retain.isEmpty()) {
-                        return this.getFakeValue(normalTypes.get(retain.get(0)));
-                    } else {
-
-                        if (level > 500) {
-                            throw new KnownException("This class reference level exceeds maximum limit or has nested references!");
-                        }
-
-                        return parseClass(psiClass, level, ignoreProperties);
+                    if (level > 500) {
+                        throw new KnownException("This class reference level exceeds maximum limit or has nested references!");
                     }
+
+                    return parseClass(psiClass, level, ignoreProperties);
+
                 }
             }
         }
     }
 
+    public String findDescription(PsiField field) {
 
-    public Object getPrimitiveTypeValue(PsiType type) {
-        switch (type.getCanonicalText()) {
-            case "boolean":
-                return this.getFakeValue(normalTypes.get("Boolean"));
-            case "byte":
-            case "short":
-            case "int":
-            case "long":
-                return this.getFakeValue(normalTypes.get("Number"));
-            case "float":
-            case "double":
-                return this.getFakeValue(normalTypes.get("BigDecimal"));
-            case "char":
-                return this.getFakeValue(normalTypes.get("Character"));
-            default:
-                return null;
+        PsiAnnotation annotation = field.getAnnotation(com.fasterxml.jackson.annotation.JsonPropertyDescription.class.getName());
+        if (annotation != null) {
+            String text = POJO2JsonPsiUtils.psiTextToString(annotation.findAttributeValue("value").getText());
+            if (StringUtils.isNotBlank(text)) {
+                return text;
+            }
         }
+
+        PsiDocComment docComment = field.getDocComment();
+        if (docComment != null) {
+            PsiDocTag psiDocTag = docComment.findTagByName("JsonPropertyDescription");
+            if (psiDocTag != null) {
+                return psiDocTag.getContainingComment().getText();
+            }else{
+                return formatComment(docComment.getText());
+            }
+
+        }
+        return null;
+    }
+
+    public static String formatComment(String text){
+        String[] ps = text.replaceAll("[/* ]","").split("\n");
+        List<String> filtered = new ArrayList<>();
+        for (String p : ps) {
+            if (!Objects.equals(p, "")) {
+                filtered.add(p);
+            }
+        }
+        if(filtered.size()>0){
+            return filtered.get(0);
+        }
+        return null;
+    }
+
+
+
+    public Object getPrimitiveTypeValue(PsiType type, PsiField field) {
+        String typeName = type.getCanonicalText();
+        if(typeName.contains(".")){
+            typeName = typeName.substring(typeName.lastIndexOf(".")+1);
+        }
+        switch (typeName) {
+            case "boolean":
+            case "Boolean":
+                return new JsonSchemaItem("boolean", findDescription(field), null);
+            case "byte":
+            case "Byte":
+            case "short":
+            case "Short":
+            case "int":
+            case "Integer":
+            case "long":
+            case "Long":
+            case "Instant":
+                return new JsonSchemaItem("integer", findDescription(field), null);
+            case "float":
+            case "Float":
+            case "double":
+            case "Double":
+            case "BigDecimal":
+                return new JsonSchemaItem("number", findDescription(field), null);
+            default:
+                return new JsonSchemaItem("string", findDescription(field), null);
+        }
+
     }
 
 }
